@@ -259,7 +259,7 @@ async function ledger() {
     const owed = completed.filter(r => !r.paid);
     return {
       updated: Date.now(), rows, per, order,
-      stats: { npcs: n, accepted: rows.length, completed: completed.length, paidSol: round(paidSol), owedSol: round(owed.reduce((a, r) => a + r.reward, 0)), treasurySol: tbal == null ? null : round(tbal) },
+      stats: { byTask: Object.fromEntries(TASKS.map(t => [t.id, { done: rows.filter(r => r.task === t.id && r.v.state === 'complete').length, open: rows.filter(r => r.task === t.id && r.v.state === 'open').length }])), npcs: n, accepted: rows.length, completed: completed.length, paidSol: round(paidSol), owedSol: round(owed.reduce((a, r) => a + r.reward, 0)), treasurySol: tbal == null ? null : round(tbal) },
       feed: feed.slice(0, 60).map(f => ({ ...f, tag: npcOf(f.wallet).tag })),
       leaderboard: Object.values(per).filter(p => p.done > 0).sort((a, b) => b.earned - a.earned || a.no - b.no).slice(0, 25).map(p => ({ tag: p.tag, no: p.no, done: p.done, earned: round(p.earned), paid: round(p.paid), wallet: p.wallet, line: p.line })),
     };
