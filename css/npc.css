@@ -34,12 +34,14 @@ nav.solid{background:rgba(6,6,8,.82);backdrop-filter:blur(14px);-webkit-backdrop
 .hero{position:relative;height:min(100svh,940px);min-height:620px;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center}
 #crowd{position:absolute;inset:0;width:100%;height:100%;display:block}
 .fog{position:absolute;inset:0;pointer-events:none;background:
-  radial-gradient(ellipse 50% 50% at 50% 52%,rgba(6,6,8,.96),rgba(6,6,8,.8) 50%,rgba(6,6,8,0) 100%),
+  radial-gradient(ellipse 36% 38% at 50% 50%,rgba(6,6,8,.95),rgba(6,6,8,.72) 55%,rgba(6,6,8,0) 100%),
   linear-gradient(180deg,rgba(6,6,8,1) 0,rgba(6,6,8,.7) 16%,rgba(6,6,8,0) 38%,rgba(6,6,8,0) 78%,rgba(6,6,8,1) 100%),
   radial-gradient(ellipse 80% 80% at 50% 50%,rgba(0,0,0,0) 50%,rgba(0,0,0,.7) 100%)}
 .hero-in{position:relative;z-index:2;padding:0 16px;max-width:1200px}
-h1{font-weight:800;font-size:clamp(46px,8.4vw,112px);line-height:.96;letter-spacing:-.055em}
-.sub{margin-top:18px;font-size:clamp(17px,2vw,21px);color:var(--d)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#logo{width:104px;height:104px;display:block;margin:0 auto;filter:drop-shadow(0 18px 40px rgba(0,0,0,.8))}
+.sub{margin-top:22px;font-weight:700;font-size:clamp(21px,2.6vw,30px);letter-spacing:-.03em;color:var(--t)}
+.sub span{color:var(--d)}
 .cta{margin-top:34px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .btn{height:52px;padding:0 26px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:15px;transition:transform .15s,background .2s,border-color .2s,box-shadow .2s;white-space:nowrap}
 .btn:active{transform:scale(.97)}
@@ -95,6 +97,12 @@ main{position:relative;z-index:2}
 .st.done i,.st.paid i{background:var(--ok);box-shadow:0 0 10px var(--ok)}
 .st.red i{background:var(--red);box-shadow:0 0 10px var(--red)}
 .task.off{opacity:.62}
+.task .count{font:400 12px M;color:var(--m);margin-left:auto}
+.task .count b{color:var(--t);font-weight:700}
+.go{font:400 12px M;color:var(--d);border-bottom:1px solid var(--line2);padding-bottom:1px}
+.go:hover{color:var(--t)}
+.card-btn{margin-top:12px;font:400 12px M;color:var(--d);border:1px solid var(--line2);border-radius:999px;height:34px;padding:0 14px;width:100%}
+.card-btn:hover{color:var(--t);border-color:#4a4a58}
 
 /* your npc */
 .sheet{display:grid;grid-template-columns:340px 1fr;border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,var(--p2),var(--p));overflow:hidden}
@@ -221,9 +229,9 @@ details code{font-size:13px;color:var(--t)}
   @keyframes run2{to{top:100%}}
 }
 @media (max-width:760px){
-  nav{justify-content:flex-start;overflow-x:auto;padding-right:130px}
+  nav{justify-content:center;padding-right:120px}
   .links a{padding:8px 10px;font-size:13px}
-  .links a:nth-child(4){display:none}
+  .links a:nth-child(4),.links a:nth-child(5){display:none}
   .wallet{height:36px;top:14px;padding:0 12px}
   .hero{min-height:600px}
   .sec{padding-top:80px}
@@ -239,7 +247,7 @@ details code{font-size:13px;color:var(--t)}
   .feed li{padding:12px 14px;grid-template-columns:30px 1fr auto}
   .live span+span::before{display:none}
 }
-@media (max-width:520px){
-  .links a:nth-child(5){display:none}
+@media (max-width:420px){
+  .links a{padding:8px 7px;font-size:12px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
