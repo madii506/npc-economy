@@ -7,7 +7,7 @@
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const DPR = Math.min(2, window.devicePixelRatio || 1);
   const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
-  const S = { cfg: null, st: null, me: null, busy: '', seen: new Set() };
+  const S = { cfg: null, st: null, me: null, look: null, ff: 'all', busy: '', seen: new Set() };
 
   /* ---------------- utils ---------------- */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -208,33 +208,43 @@
     const b = S.st && S.st.stats && S.st.stats.byTask && S.st.stats.byTask[id];
     return b ? `<span class="count"><b>${b.done}</b> done · <b>${b.open}</b> open</span>` : '';
   }
+  // where this NPC is in the quest: 0 nothing yet, 2 accepted, 3 verified and owed, 4 paid
+  function stage(ts) {
+    if (!ts || !ts.last) return 0;
+    const v = ts.last.v || {};
+    if (ts.state === 'open') return 2;
+    if (v.state === 'complete') return ts.last.paid ? 4 : 3;
+    return 0;
+  }
+  function track(n) {
+    return `<ol class="track">${['Accept', 'Do it', 'Verified', 'Paid'].map((l, i) => { const k = i + 1; const c = n === 4 || k < n ? 'done' : k === n ? 'cur' : ''; return `<li class="${c}"><i></i><span>${l}</span></li>`; }).join('')}</ol>`;
+  }
   function taskState(t) {
     if (!t.live) return { cls: 'off', st: '<span class="st"><i></i>Opens when $NPC is live</span>', btn: '' };
-    if (!W.acct) return { st: '<span class="st"><i></i>Open to every NPC</span>', btn: `<button class="btn pri" data-do="connect" type="button">Connect to accept</button>` };
+    if (!W.acct) return { st: '<span class="st"><i></i>Open to every NPC</span>', btn: `<button class="btn pri" data-do="connect" type="button">Connect to accept</button>`, mark: true };
     const me = S.me;
     if (!me) return { st: '<span class="st"><i></i>Loading your NPC…</span>', btn: '' };
-    if (!me.spawned) return { st: '<span class="st"><i></i>Spawn your NPC to take tasks</span>', btn: `<button class="btn pri" data-do="spawn" type="button">Become an NPC</button>` };
+    if (!me.spawned) return { st: '<span class="st"><i></i>Spawn your NPC to take tasks</span>', btn: `<button class="btn pri" data-do="spawn" type="button">Become an NPC</button>`, mark: true };
     const ts = me.tasks[t.id] || { state: 'available' };
-    const busy = S.busy === t.id;
-    const last = ts.last;
-    const lastLine = last && last.v && last.v.state === 'complete' ? (last.paid ? `<span class="st paid"><i></i>Last one paid</span>` : `<span class="st done"><i></i>Last one done · ${fsol(last.reward)} SOL owed</span>`) : '';
+    const busy = S.busy === t.id, last = ts.last, n = stage(ts);
+    const lastLine = n === 4 ? `<span class="st paid"><i></i>Last one paid</span>` : n === 3 ? `<span class="st done"><i></i>${fsol(last.reward)} SOL owed to you</span>` : '';
     if (ts.state === 'open') {
       const v = last.v || {};
       const until = v.ready ? `checkable in <b data-cd="${v.ready}">${hms(v.ready - nowS())}</b>` : v.until ? `<b data-cd="${v.until}">${hms(v.until - nowS())}</b> left` : '';
-      return { st: `<span class="st open"><i></i>Open · ${until}${v.note ? ' · ' + esc(v.note) : ''}</span>`, btn: `<button class="btn alt" data-do="check" data-t="${t.id}" type="button" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>Checking' : 'Check now'}</button>` };
+      return { n, st: `<span class="st open"><i></i>${until}${v.note ? ' · ' + esc(v.note) : ''}</span>`, btn: `<button class="btn alt" data-do="check" data-t="${t.id}" type="button" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>Checking' : 'Check now'}</button>` };
     }
-    if (ts.state === 'cooldown') return { st: lastLine, btn: `<button class="btn alt" type="button" disabled>Back in <span data-cd="${ts.next}">${hms(ts.next - nowS())}</span></button>` };
-    return { st: lastLine || '<span class="st"><i></i>Available</span>', btn: `<button class="btn pri" data-do="accept" data-t="${t.id}" type="button" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>Sign in wallet' : 'Accept task'}</button>`, mark: true };
+    if (ts.state === 'cooldown') return { n, st: lastLine, btn: `<button class="btn alt" type="button" disabled>Back in <span data-cd="${ts.next}">${hms(ts.next - nowS())}</span></button>` };
+    return { n, st: lastLine || '<span class="st"><i></i>Available</span>', btn: `<button class="btn pri" data-do="accept" data-t="${t.id}" type="button" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>Sign in wallet' : 'Accept task'}</button>`, mark: true };
   }
   function renderTasks() {
     if (!S.cfg) return;
-    const box = $('#tasks');
-    box.innerHTML = S.cfg.tasks.map(t => {
+    $('#tasks').innerHTML = S.cfg.tasks.map((t, i) => {
       const s = taskState(t);
       return `<article class="task ${s.cls || ''}" data-id="${t.id}">
         <div class="top"><div class="ico">${s.mark ? '<span class="mark">!</span>' : ''}<svg viewBox="0 0 24 24">${ICONS[t.id] || ''}</svg></div>
           <div><h3>${esc(t.name)}</h3><p class="line">${esc(t.line)}</p></div>
           <div class="pay"><b>${fsol(t.reward)}</b><small>SOL reward</small></div></div>
+        ${track(s.n || 0)}
         <dl><dt>proof</dt><dd>${esc(t.proof)}</dd><dt>window</dt><dd>${span(t.window)} after you accept</dd><dt>cooldown</dt><dd>${span(t.cooldown)} after it's done</dd><dt>where</dt><dd>${GO[t.id] || '—'}</dd></dl>
         <div class="act">${s.btn}${s.st}${count(t.id)}</div>
       </article>`;
@@ -242,6 +252,7 @@
   }
   $('#tasks').addEventListener('pointermove', e => { const c = e.target.closest('.task'); if (!c) return; const r = c.getBoundingClientRect(); c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px'); });
   document.addEventListener('click', e => {
+    const lk = e.target.closest('[data-look]'); if (lk) { e.preventDefault(); look(lk.dataset.look); return; }
     const b = e.target.closest('[data-do]'); if (!b) return;
     const d = b.dataset.do;
     if (d === 'connect') connect();
@@ -249,61 +260,83 @@
     if (d === 'accept') accept(b.dataset.t);
     if (d === 'check') check(b.dataset.t);
     if (d === 'card') idCard();
+    if (d === 'mine') { S.look = null; renderMe(); }
   });
 
   /* ---------------- your NPC sheet ---------------- */
+  // a title from tasks finished on-chain. it never changes rewards.
+  const RANKS = [[0, 'Background NPC'], [1, 'Villager'], [3, 'Shopkeeper'], [7, 'Guard'], [15, 'Quest giver'], [30, 'Main character']];
+  function rankOf(done) {
+    let i = 0; for (let k = 0; k < RANKS.length; k++) if (done >= RANKS[k][0]) i = k;
+    const next = RANKS[i + 1] || null;
+    return { name: RANKS[i][1], i, next: next && next[1], need: next ? next[0] : null, from: RANKS[i][0], pct: next ? (done - RANKS[i][0]) / (next[0] - RANKS[i][0]) : 1 };
+  }
+  function heroBtn() { $('#spawnBtn').textContent = S.me && S.me.spawned ? 'Open your NPC' : 'Become an NPC'; }
   function renderMe() {
-    const L = $('#meLedger'), spawnBtn = $('#spawnBtn');
+    const L = $('#meLedger'), view = S.look, me = view || S.me;
+    heroBtn();
     $$('.who .btn, .who .card-btn').forEach(b => b.remove());
-    if (!W.acct) {
-      $('#meTag').textContent = 'npc_????'; $('#meNo').textContent = 'not spawned'; meFace.set(7); say('connect a wallet, traveler.');
-      L.innerHTML = `<div class="gate"><h3>Who are you in town?</h3><p>Connect a Solana wallet to see the NPC it becomes. Nothing is signed until you spawn.</p><button class="btn pri" data-do="connect" type="button">Connect wallet</button></div>`;
-      spawnBtn.textContent = 'Become an NPC'; return;
+    const vb = $('#viewing');
+    vb.hidden = !view;
+    if (view) vb.innerHTML = `<span>Viewing <b>${esc(view.npc.tag)}</b> · ${short(view.wallet)}</span><button type="button" data-do="mine">${W.acct ? 'Back to yours' : 'Close'}</button>`;
+    if (!me) {
+      if (!W.acct) {
+        $('#meTag').textContent = 'npc_????'; $('#meNo').textContent = 'not spawned'; meFace.set(7); say('connect a wallet, traveler.');
+        L.innerHTML = `<div class="gate"><h3>Who are you in town?</h3><p>Connect a wallet to see the NPC it becomes. Nothing is signed until you spawn.</p><button class="btn pri" data-do="connect" type="button">Connect wallet</button></div>`;
+      } else L.innerHTML = `<div class="gate"><p class="mono">reading the board…</p></div>`;
+      return;
     }
-    const me = S.me;
-    if (!me) { L.innerHTML = `<div class="gate"><p class="mono">reading the board…</p></div>`; return; }
     $('#meTag').textContent = me.npc.tag;
     $('#meNo').textContent = me.spawned ? `npc #${me.npc.no} · ${short(me.wallet)}` : `not spawned · ${short(me.wallet)}`;
     meFace.set(me.npc.seed, false); say(me.npc.line);
     if (!me.spawned) {
-      spawnBtn.textContent = 'Become an NPC';
-      L.innerHTML = `<div class="gate"><h3>This is who you'd be.</h3><p>Sign one memo to the board and ${esc(me.npc.tag)} joins the town. It sends 0 SOL; you pay only the network fee.</p><button class="btn pri" data-do="spawn" type="button" ${S.busy === 'spawn' ? 'disabled' : ''}>${S.busy === 'spawn' ? '<span class="spin"></span>Spawning' : 'Spawn ' + esc(me.npc.tag)}</button></div>`;
+      L.innerHTML = view
+        ? `<div class="gate"><h3>Not an NPC yet.</h3><p>This wallet hasn't spawned. If it does, it becomes ${esc(me.npc.tag)}.</p></div>`
+        : `<div class="gate"><h3>This is who you'd be.</h3><p>Sign one memo to the board and ${esc(me.npc.tag)} joins the town. It sends 0 SOL; you pay only the network fee.</p><button class="btn pri" data-do="spawn" type="button" ${S.busy === 'spawn' ? 'disabled' : ''}>${S.busy === 'spawn' ? '<span class="spin"></span>Spawning' : 'Spawn ' + esc(me.npc.tag)}</button></div>`;
       return;
     }
-    spawnBtn.textContent = 'Open your NPC';
     $('.who').insertAdjacentHTML('beforeend', '<button class="card-btn" data-do="card" type="button">save ID card ↓</button>');
     const bal = me.npcBalance == null ? '—' : Math.floor(me.npcBalance).toLocaleString('en-US');
+    const rk = rankOf(me.done);
     const rows = me.history.map(h => {
       const t = taskOf(h.task);
       const st = h.paid ? `<span class="st paid"><i></i><a href="${tx(h.paid)}" target="_blank" rel="noopener">paid</a></span>` : h.state === 'complete' ? `<span class="st done"><i></i>owed</span>` : h.state === 'expired' ? `<span class="st red"><i></i>expired</span>` : `<span class="st open"><i></i>open</span>`;
       return `<tr><td>${esc(t.name)}</td><td class="mono">${fsol(h.reward)} SOL</td><td>${st}</td><td><a href="${tx(h.sig)}" target="_blank" rel="noopener">${ago(h.at)}</a></td><td>${h.proof ? `<a href="${tx(h.proof)}" target="_blank" rel="noopener">proof</a>` : '<span class="mono">—</span>'}</td></tr>`;
     }).join('');
-    L.innerHTML = `<div class="figs">
+    L.innerHTML = `<div class="rank"><div><small>rank</small><b>${rk.name}</b></div><div class="bar"><i style="width:${Math.round(rk.pct * 100)}%"></i></div><span>${rk.next ? `${me.done} / ${rk.need} to ${rk.next}` : 'top rank'}</span></div>
+      <div class="figs">
         <div><small>earned</small><b>${fsol(me.earned)}<em>SOL</em></b></div>
         <div><small>paid</small><b>${fsol(me.paid)}<em>SOL</em></b></div>
         <div class="owed"><small>owed</small><b>${fsol(me.owed)}<em>SOL</em></b></div>
         <div><small>tasks done</small><b>${me.done}</b></div>
       </div>
-      <div class="hist"><h4>quest log · $NPC held: ${bal}</h4>${rows ? `<div class="tw"><table><thead><tr><th>task</th><th>reward</th><th>state</th><th>accepted</th><th>proof</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No tasks yet. Pick one from the board above.</p>`}</div>`;
+      <div class="hist"><h4>quest log · $NPC held: ${bal}</h4>${rows ? `<div class="tw"><table><thead><tr><th>task</th><th>reward</th><th>state</th><th>accepted</th><th>proof</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">${view ? 'No tasks yet.' : 'No tasks yet. Pick one from the board above.'}</p>`}</div>`;
   }
+  // read-only view of any wallet's NPC
+  async function look(w) {
+    w = String(w || '').trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w)) { toast("That address doesn't look right."); return; }
+    $('#you').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+    if (W.acct && W.acct.address === w) { S.look = null; renderMe(); return; }
+    try { S.look = await api('npc?wallet=' + w); renderMe(); }
+    catch (e) { toast(e.message); }
+  }
+  $('#look').addEventListener('submit', e => { e.preventDefault(); look($('#lookIn').value); });
 
-  // a 1200x630 card of your NPC, drawn in the browser from the same numbers you see
+  // a 1200x630 card of an NPC, drawn in the browser from the same numbers you see
   async function idCard() {
-    const me = S.me; if (!me || !me.spawned) return;
-    try { await Promise.all([document.fonts.load('700 60px M'), document.fonts.load('400 20px M'), document.fonts.load('800 30px I'), document.fonts.load('500 20px I')]); } catch (e) { }
+    const me = S.look || S.me; if (!me || !me.spawned) return;
+    try { await Promise.all([document.fonts.load('700 60px M'), document.fonts.load('400 20px M'), document.fonts.load('500 20px I')]); } catch (e) { }
     const cv = document.createElement('canvas'); cv.width = 1200; cv.height = 630; const x = cv.getContext('2d');
     x.fillStyle = '#060608'; x.fillRect(0, 0, 1200, 630);
-    // a faint crowd behind
-    for (let r = 0; r < 3; r++) for (let i = 0; i < 14; i++) { const sz = 60 + r * 22, cx = 40 + i * 92 + (r % 2) * 46, top = 360 + r * 70; x.globalAlpha = .22 + r * .1; tile(x, cx, top, sz, 0, -.4, 0, false, .25 + r * .12); }
-    x.globalAlpha = 1;
+    for (let r = 0; r < 3; r++) for (let i = 0; i < 14; i++) { const sz = 60 + r * 22, cx = 40 + i * 92 + (r % 2) * 46, top = 360 + r * 70; tile(x, cx, top, sz, 0, -.4, 0, false, .25 + r * .12); }
     const g = x.createLinearGradient(0, 0, 0, 630); g.addColorStop(0, 'rgba(6,6,8,1)'); g.addColorStop(.45, 'rgba(6,6,8,.9)'); g.addColorStop(1, 'rgba(6,6,8,.55)'); x.fillStyle = g; x.fillRect(0, 0, 1200, 630);
     tile(x, 250, 120, 300, .15, .1, 0, false, 1);
-    x.fillStyle = '#5f5d6b'; x.font = '400 20px M'; x.fillText(`NPC #${me.npc.no}`, 480, 160);
+    x.fillStyle = '#5f5d6b'; x.font = '400 20px M'; x.fillText(`NPC #${me.npc.no} · ${rankOf(me.done).name}`, 480, 160);
     x.fillStyle = '#ecebf2'; x.font = '700 72px M'; x.fillText(me.npc.tag, 476, 236);
     x.strokeStyle = '#292934'; x.lineWidth = 2; x.beginPath(); x.roundRect(480, 268, 640, 76, 14); x.stroke();
     x.fillStyle = '#ecebf2'; x.font = '400 24px M'; x.fillText('“' + me.npc.line + '”', 506, 315);
-    const figs = [['earned', fsol(me.earned) + ' SOL'], ['paid', fsol(me.paid) + ' SOL'], ['tasks done', String(me.done)]];
-    figs.forEach(([k, v], i) => { const fx = 480 + i * 215; x.fillStyle = '#5f5d6b'; x.font = '400 18px M'; x.fillText(k, fx, 396); x.fillStyle = k === 'earned' ? '#ffc21a' : '#ecebf2'; x.font = '700 34px M'; x.fillText(v, fx, 438); });
+    [['earned', fsol(me.earned) + ' SOL'], ['paid', fsol(me.paid) + ' SOL'], ['tasks done', String(me.done)]].forEach(([k, v], i) => { const fx = 480 + i * 215; x.fillStyle = '#5f5d6b'; x.font = '400 18px M'; x.fillText(k, fx, 396); x.fillStyle = k === 'earned' ? '#ffc21a' : '#ecebf2'; x.font = '700 34px M'; x.fillText(v, fx, 438); });
     x.fillStyle = '#9a98a6'; x.font = '500 20px I'; x.fillText('The NPC economy.', 80, 560);
     x.textAlign = 'right'; x.fillStyle = '#5f5d6b'; x.font = '400 20px M'; x.fillText(location.host, 1120, 560);
     const d = x.getImageData(0, 0, 1200, 630); for (let i = 0; i < d.data.length; i += 4) { const n = (Math.random() - .5) * 12; d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n; } x.putImageData(d, 0, 0);
@@ -311,29 +344,118 @@
     toast('ID card saved');
   }
 
-  /* ---------------- town: feed + leaderboard ---------------- */
+  /* ---------------- town: population, feed, leaderboard ---------------- */
+  // every NPC is a tile in town. the next empty slot waits with its eyes shut.
+  const pop = (() => {
+    const cv = $('#pop'), x = cv.getContext('2d'), layer = document.createElement('canvas'), lx = layer.getContext('2d'), tip = $('#ptip');
+    let W = 0, H = 0, cells = [], size = 30, vis = false, raf = 0, list = [], built = '';
+    function build() {
+      const w = cv.parentElement.clientWidth; if (!w) return;
+      size = w < 640 ? 24 : 30; const gap = Math.round(size * .32), pad = 22;
+      const cols = Math.max(6, Math.floor((w - pad * 2 + gap) / (size + gap)));
+      const slots = Math.max(cols * 3, Math.ceil((list.length + 1) / cols) * cols);
+      const rows = slots / cols;
+      W = w; H = pad * 2 + rows * (size + gap) - gap;
+      cv.style.height = H + 'px'; cv.width = layer.width = Math.round(W * DPR); cv.height = layer.height = Math.round(H * DPR);
+      const ox = (W - (cols * (size + gap) - gap)) / 2;
+      cells = [];
+      for (let i = 0; i < slots; i++) { const c = i % cols, r = Math.floor(i / cols); cells.push({ cx: ox + c * (size + gap) + size / 2, top: pad + r * (size + gap), p: list[i] || null, lx: 0, ly: 0, blinkAt: performance.now() + Math.random() * 8000, i }); }
+      lx.setTransform(DPR, 0, 0, DPR, 0, 0); lx.clearRect(0, 0, W, H);
+      for (const c of cells) {
+        if (c.p) { body(lx, c.cx, c.top, size, 1); continue; }
+        lx.globalAlpha = c.i === list.length ? 1 : .55;
+        lx.strokeStyle = c.i === list.length ? 'rgba(255,194,26,.6)' : 'rgba(255,255,255,.08)'; lx.lineWidth = 1; lx.setLineDash(c.i === list.length ? [3, 3] : []);
+        lx.beginPath(); lx.roundRect(c.cx - size / 2 + .5, c.top + .5, size - 1, size - 1, size * .26); lx.stroke(); lx.setLineDash([]);
+        lx.fillStyle = 'rgba(255,255,255,.12)'; const ey = c.top + size / 2, sp = size * .19; lx.fillRect(c.cx - sp - size * .06, ey, size * .12, 1); lx.fillRect(c.cx + sp - size * .06, ey, size * .12, 1);
+        lx.globalAlpha = 1;
+      }
+    }
+    function frame(now) {
+      raf = 0; if (!vis) return;
+      x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(layer, 0, 0);
+      x.setTransform(DPR, 0, 0, DPR, 0, 0);
+      const r = cv.getBoundingClientRect(), mine = W_addr();
+      const tx = pointer.x == null ? W / 2 : pointer.x - r.left, ty = pointer.y == null ? -200 : pointer.y - r.top;
+      for (const c of cells) {
+        if (!c.p) continue;
+        const gx = Math.max(-1, Math.min(1, (tx - c.cx) / 300)), gy = Math.max(-1, Math.min(1, (ty - c.top - size / 2) / 240));
+        c.lx += (gx - c.lx) * .08; c.ly += (gy - c.ly) * .08;
+        let b = 0; if (!reduce) { const d = now - c.blinkAt; if (d > 0 && d < 160) b = 1 - Math.abs(d - 80) / 80; else if (d >= 160) c.blinkAt = now + 3000 + Math.random() * 9000; }
+        eyes(x, c.cx, c.top, size, c.lx, c.ly, b, c.p.wallet === mine ? 1 : 0, 1);
+      }
+      if (!reduce) raf = requestAnimationFrame(frame);
+    }
+    const kick = () => { if (!raf && vis) raf = requestAnimationFrame(frame); };
+    new IntersectionObserver(es => { vis = es[0].isIntersecting; kick(); }).observe(cv);
+    let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { build(); kick(); }, 150); });
+    const at = e => { const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top; return cells.find(c => Math.abs(px - c.cx) <= size / 2 && py >= c.top && py <= c.top + size); };
+    cv.addEventListener('pointermove', e => {
+      const c = at(e);
+      if (!c) { tip.hidden = true; cv.style.cursor = ''; return; }
+      tip.hidden = false; cv.style.cursor = c.p ? 'pointer' : '';
+      tip.innerHTML = c.p ? `<b>${esc(c.p.tag)}</b> #${c.p.no} · ${c.p.done} done · ${rankOf(c.p.done).name}` : c.i === list.length ? `<b>slot #${c.i + 1}</b> is open` : `empty`;
+      tip.style.left = Math.min(c.cx, W - 120) + 'px'; tip.style.top = (c.top - 8) + 'px';
+    });
+    cv.addEventListener('pointerleave', () => { tip.hidden = true; });
+    cv.addEventListener('click', e => { const c = at(e); if (c && c.p) look(c.p.wallet); else if (c && c.i === list.length) spawn(); });
+    return { set(l) { const key = l.map(p => p.no + ':' + p.done).join(','); list = l; if (key !== built || !cells.length) { built = key; build(); } kick(); }, build };
+  })();
+  const W_addr = () => W.acct ? W.acct.address : '';
+
+  function renderTicker() {
+    const st = S.st, items = [];
+    if (st && st.feed.length) st.feed.slice(0, 14).forEach(f => {
+      const t = taskOf(f.task).name;
+      items.push(f.kind === 'spawn' ? `<b>${esc(f.tag)}</b> joined the town` : f.kind === 'accept' ? `<b>${esc(f.tag)}</b> took ${esc(t)}` : f.kind === 'complete' ? `<b>${esc(f.tag)}</b> finished ${esc(t)}` : `<b>${esc(f.tag)}</b> was paid <span class="g">${fsol(f.sol)} SOL</span>`);
+    });
+    if (S.cfg) S.cfg.tasks.filter(t => t.live).forEach(t => items.push(`<span class="y">!</span> ${esc(t.name)} pays <b>${fsol(t.reward)} SOL</b>`));
+    if (st && !st.feed.length) items.push(`<b>${st.stats.npcs}</b> NPCs in town`, `slot <b>#${st.stats.npcs + 1}</b> is open`);
+    if (!items.length) return;
+    const row = items.map(h => `<span class="ti">${h}</span>`).join('');
+    const el = $('#tk'); if (el.dataset.k === row) return; el.dataset.k = row;
+    el.innerHTML = row + row; el.style.animationDuration = Math.max(24, items.length * 5) + 's';
+  }
+
   function renderTown() {
     const st = S.st; if (!st) return;
     const s = st.stats;
     $('#lTre').textContent = s.treasurySol == null ? '—' : fsol(s.treasurySol);
     $('#lNpc').textContent = s.npcs; $('#lDone').textContent = s.completed; $('#lPaid').textContent = fsol(s.paidSol);
-    $('#feedAge').textContent = 'live';
+    $('#popN').textContent = `${s.npcs} NPC${s.npcs === 1 ? '' : 's'} · next slot #${s.npcs + 1}`;
+    pop.set(st.town || []);
+    renderTicker(); renderFlow();
     const words = f => {
-      const t = taskOf(f.task).name;
-      if (f.kind === 'spawn') return `<b>${esc(f.tag)}</b> spawned as NPC #${f.no}`;
-      if (f.kind === 'accept') return `<b>${esc(f.tag)}</b> took <em>${esc(t)}</em> for ${fsol(f.reward)} SOL`;
-      if (f.kind === 'complete') return `<b>${esc(f.tag)}</b> finished <em>${esc(t)}</em>`;
-      if (f.kind === 'paid') return `<b>${esc(f.tag)}</b> was paid <span class="g">${fsol(f.sol)} SOL</span>`;
+      const t = taskOf(f.task).name, who = `<b data-look="${esc(f.wallet)}">${esc(f.tag)}</b>`;
+      if (f.kind === 'spawn') return `${who} spawned as NPC #${f.no}`;
+      if (f.kind === 'accept') return `${who} took <em>${esc(t)}</em> for ${fsol(f.reward)} SOL`;
+      if (f.kind === 'complete') return `${who} finished <em>${esc(t)}</em>`;
+      if (f.kind === 'paid') return `${who} was paid <span class="g">${fsol(f.sol)} SOL</span>`;
       return '';
     };
+    const ICON = { spawn: '+', accept: '!', complete: '✓', paid: '◎' };
     const first = !S.seen.size;
-    $('#feed').innerHTML = st.feed.length ? st.feed.map(f => {
+    const list = st.feed.filter(f => S.ff === 'all' || f.kind === S.ff);
+    $('#feed').innerHTML = list.length ? list.map(f => {
       const k = f.kind + f.sig; const fresh = !first && !S.seen.has(k); S.seen.add(k);
-      return `<li class="${fresh ? 'new' : ''}"><img class="mini" src="${mini(f.tag)}" alt=""><span class="what">${words(f)}</span><time><a href="${tx(f.sig)}" target="_blank" rel="noopener">${ago(f.at)}</a></time></li>`;
-    }).join('') : `<li class="empty">The town is quiet. Be the first NPC.</li>`;
-    $('#lb').innerHTML = st.leaderboard.length ? st.leaderboard.map((p, i) => `<li><span class="n">${String(i + 1).padStart(2, '0')}</span><img class="mini" src="${mini(p.tag)}" alt=""><span class="nm"><b>${esc(p.tag)}</b><small>“${esc(p.line)}”</small></span><span class="v">${fsol(p.earned)}<small>${p.done} done</small></span></li>`).join('') : `<li class="empty">No one has finished a task yet.</li>`;
+      return `<li class="${fresh ? 'new' : ''} k-${f.kind}"><img class="mini" src="${mini(f.tag)}" alt=""><span class="what"><i class="kd">${ICON[f.kind] || ''}</i>${words(f)}</span><time><a href="${tx(f.sig)}" target="_blank" rel="noopener">${ago(f.at)}</a></time></li>`;
+    }).join('') : `<li class="empty">${st.feed.length ? 'Nothing here yet.' : 'The town is quiet. Be the first NPC.'}</li>`;
+    $('#lb').innerHTML = st.leaderboard.length ? st.leaderboard.map((p, i) => `<li class="${i < 3 ? 'top' : ''}" data-look="${esc(p.wallet)}"><span class="n">${String(i + 1).padStart(2, '0')}</span><img class="mini" src="${mini(p.tag)}" alt=""><span class="nm"><b>${esc(p.tag)}</b><small>${rankOf(p.done).name} · “${esc(p.line)}”</small></span><span class="v">${fsol(p.earned)}<small>${p.done} done</small></span></li>`).join('') : `<li class="empty">No one has finished a task yet.<br>The first name here is still open.</li>`;
   }
+  $('#ff').addEventListener('click', e => { const b = e.target.closest('button[data-f]'); if (!b) return; S.ff = b.dataset.f; $$('#ff button').forEach(x => x.classList.toggle('on', x === b)); renderTown(); });
 
+  function renderFlow() {
+    const c = S.cfg, st = S.st && S.st.stats;
+    if (c) {
+      $('#flowIn').textContent = '$NPC creator fees';
+      $('#flowInSub').textContent = c.ca ? 'from every $NPC trade' : 'starts when $NPC launches';
+      $('#flowTre').textContent = c.treasury ? short(c.treasury) : 'not set yet';
+    }
+    if (st) {
+      $('#flowTreSub').textContent = st.treasurySol == null ? '—' : `${fsol(st.treasurySol)} SOL now`;
+      $('#flowOut').textContent = `${fsol(st.paidSol)} SOL paid`;
+      $('#flowOutSub').textContent = `${st.completed} tasks done · ${fsol(st.owedSol)} SOL owed`;
+    }
+  }
   function renderCfg() {
     const c = S.cfg; if (!c) return;
     const links = [];
@@ -342,21 +464,21 @@
     if (c.ca) links.push(`<a class="chip" href="https://pump.fun/coin/${esc(c.ca)}" target="_blank" rel="noopener">pump.fun</a>`);
     $('#heroLinks').innerHTML = links.join('');
     const ca = $('#caBtn'); if (ca) ca.onclick = () => navigator.clipboard && navigator.clipboard.writeText(c.ca).then(() => toast('CA copied'));
-    $('#flowTre').textContent = c.treasury ? short(c.treasury) : 'not set yet';
     const a = [`<a class="chip" href="${acc(c.board)}" target="_blank" rel="noopener">board ${short(c.board)} ↗</a>`];
     if (c.treasury) a.push(`<a class="chip" href="${acc(c.treasury)}" target="_blank" rel="noopener">treasury ${short(c.treasury)} ↗</a>`);
     if (c.ca) a.push(`<a class="chip" href="${acc(c.ca)}" target="_blank" rel="noopener">$NPC ${short(c.ca)} ↗</a>`);
     $('#addrs').innerHTML = a.join('');
+    renderFlow(); renderTicker();
   }
 
   /* ---------------- data ---------------- */
-  async function loadCfg() { try { S.cfg = await api('config'); renderCfg(); renderTasks(); renderMe(); } catch (e) { setTimeout(loadCfg, 4000); } }
-  async function loadState() { try { S.st = await api('state'); renderTown(); if (!S.busy) renderTasks(); } catch (e) { $('#feedAge').textContent = 'retrying'; } }
+  async function loadCfg() { try { S.cfg = await api('config'); renderCfg(); renderTasks(); renderMe(); if (S.st) renderTown(); } catch (e) { setTimeout(loadCfg, 4000); } }
+  async function loadState() { try { S.st = await api('state'); renderTown(); if (!S.busy) renderTasks(); } catch (e) { } }
   async function loadMe() {
     if (!W.acct) { S.me = null; renderMe(); renderTasks(); return; }
     const w = W.acct.address;
     try { const j = await api('npc?wallet=' + w); if (W.acct && W.acct.address === w) { S.me = j; renderMe(); renderTasks(); } }
-    catch (e) { if (W.acct && W.acct.address === w) $('#meLedger').innerHTML = `<div class="gate"><p class="mono">${esc(e.message)}</p></div>`; }
+    catch (e) { if (W.acct && W.acct.address === w && !S.look) $('#meLedger').innerHTML = `<div class="gate"><p class="mono">${esc(e.message)}</p></div>`; }
   }
   setInterval(() => { if (!document.hidden) loadState(); }, 20000);
   setInterval(() => { if (!document.hidden && W.acct && !S.busy) loadMe(); }, 45000);
