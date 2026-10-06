@@ -1,0 +1,8 @@
+{
+  "name": "npc",
+  "private": true,
+  "description": "The NPC economy. Become an NPC, take tasks, earn SOL.",
+  "engines": { "node": "22.x" },
+  "dependencies": { "@solana/web3.js": "^1.98.2" },
+  "overrides": { "rpc-websockets": { "uuid": "^11.1.0" } }
+}

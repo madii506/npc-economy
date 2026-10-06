@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NPC · treasury</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/img/fav.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/npc.css?v=1">
+<style>
+.adm{max-width:900px;margin:0 auto;padding:110px 16px 120px}
+.adm h1{font-size:clamp(36px,6vw,60px);text-align:left}
+.adm .sub{margin-top:10px}
+.adm .bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:28px 0 18px}
+.adm .bar .st{margin-left:auto}
+.adm .panel{padding:0}
+.adm td:last-child{text-align:right}
+</style>
+</head>
+<body>
+<nav id="nav" class="solid"><div class="links"><a href="/">Back to town</a></div><button class="wallet" id="walletBtn" type="button"><i></i><span id="walletLabel">Connect</span></button></nav>
+<div class="adm">
+  <h1>Treasury</h1>
+  <p class="sub">Pay every finished task. Connect the treasury wallet; it signs each batch.</p>
+  <div class="bar"><button class="btn pri" id="payBtn" type="button" disabled>Pay all owed</button><button class="btn alt" id="reBtn" type="button">Refresh</button><span class="st" id="info"><i></i>loading…</span></div>
+  <div class="panel"><div class="tw"><table><thead><tr><th style="padding-left:20px">npc</th><th>task</th><th>done</th><th>proof</th><th>reward</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+</div>
+<div class="modal" id="wModal" hidden><div class="mbox" role="dialog" aria-modal="true"><div class="mhead"><h3 id="wTitle">Connect</h3><button class="x" id="wClose" type="button">esc</button></div><div id="wList"></div></div></div>
+<div class="toast" id="toast" role="status"></div>
+<script src="/js/admin.js?v=1"></script>
+</body>
+</html>
