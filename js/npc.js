@@ -67,28 +67,34 @@
   addEventListener('pointermove', e => { pointer.x = e.clientX; pointer.y = e.clientY; pointer.t = performance.now(); }, { passive: true });
   addEventListener('touchstart', e => { const t = e.touches[0]; if (t) { pointer.x = t.clientX; pointer.y = t.clientY; pointer.t = performance.now(); } }, { passive: true });
 
-  // draws one NPC tile: a dark rounded body with two glowing eyes looking at (lx, ly) in -1..1
-  function tile(x, cx, top, size, lx, ly, blink, red, alpha) {
+  // one NPC tile: a dark rounded body, then two glowing eyes looking at (lx, ly) in -1..1. rage 0..1 turns them red.
+  function body(x, cx, top, size, alpha) {
     x.globalAlpha = alpha;
     const g = x.createLinearGradient(0, top, 0, top + size); g.addColorStop(0, '#18181e'); g.addColorStop(1, '#0c0c10');
     x.fillStyle = g; x.beginPath(); x.roundRect(cx - size / 2, top, size, size, size * .26); x.fill();
     x.strokeStyle = 'rgba(255,255,255,.07)'; x.lineWidth = Math.max(.6, size / 110); x.stroke();
+    x.globalAlpha = 1;
+  }
+  function eyes(x, cx, top, size, lx, ly, blink, rage, alpha) {
     const ey = top + size * .5, sp = size * .19, er = size * .064;
     for (const dx of [-sp, sp]) {
       const px = cx + dx + lx * size * .085, py = ey + ly * size * .07;
-      if (blink > 0) { x.fillStyle = red ? '#ff2a3d' : '#ecebf2'; const h = Math.max(1, er * 2 * (1 - blink)); x.fillRect(px - er, py - h / 2, er * 2, h); }
-      else { const s = er * 7.1; x.drawImage(red ? RED : EYE, px - s / 2, py - s / 2, s, s); }
+      if (blink > 0) { x.globalAlpha = alpha; x.fillStyle = rage > .5 ? '#ff2a3d' : '#ecebf2'; const h = Math.max(1, er * 2 * (1 - blink)); x.fillRect(px - er, py - h / 2, er * 2, h); continue; }
+      const s = er * 7.1;
+      if (rage < 1) { x.globalAlpha = alpha * (1 - rage); x.drawImage(EYE, px - s / 2, py - s / 2, s, s); }
+      if (rage > 0) { x.globalAlpha = alpha * rage; x.drawImage(RED, px - s / 2, py - s / 2, s, s); }
     }
     x.globalAlpha = 1;
   }
+  function tile(x, cx, top, size, lx, ly, blink, red, alpha) { body(x, cx, top, size, alpha); eyes(x, cx, top, size, lx, ly, blink, red ? 1 : 0, alpha); }
 
   /* ---------------- the hero crowd: everyone turns to look at you ---------------- */
   const crowd = (() => {
-    const cv = $('#crowd'), x = cv.getContext('2d');
-    let W = 0, H = 0, tiles = [], vis = true, raf = 0;
+    const cv = $('#crowd'), x = cv.getContext('2d'), layer = document.createElement('canvas'), lx = layer.getContext('2d');
+    let W = 0, H = 0, tiles = [], vis = true, raf = 0, rage = 0, rageTo = 0;
     function build() {
       const r = cv.getBoundingClientRect(); W = r.width; H = r.height;
-      cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+      cv.width = layer.width = Math.round(W * DPR); cv.height = layer.height = Math.round(H * DPR);
       let seed = 42; const R = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       tiles = [];
       const HOR = H * .2, scale = Math.max(.62, Math.min(1.25, W / 1400));
@@ -99,29 +105,35 @@
         for (let k = -1; k < n; k++) {
           const cx = off + k * gap + (R() - .5) * gap * .12;
           if (cx < -size || cx > W + size) continue;
-          tiles.push({ cx, top: y - size, size, alpha, lx: 0, ly: 0, blinkAt: performance.now() + R() * 9000, red: false, delay: R() * 380 });
+          tiles.push({ cx, top: y - size, size, alpha, lx: 0, ly: 0, blinkAt: performance.now() + R() * 9000, red: false, lag: .035 + R() * .05, wake: R() });
         }
       });
       // one of them is not like the others
       const cand = tiles.filter(t => { const y = t.top + t.size / 2; return y > H * .6 && y < H * .76 && t.cx > W * .8 && t.cx < W * .94; });
       (cand[0] || tiles[Math.floor(tiles.length * .6)] || {}).red = true;
+      // the bodies never move: draw them once
+      lx.setTransform(DPR, 0, 0, DPR, 0, 0); lx.fillStyle = '#060608'; lx.fillRect(0, 0, W, H);
+      for (const t of tiles) body(lx, t.cx, t.top, t.size, t.alpha);
     }
     function frame(now) {
       raf = 0; if (!vis) return;
+      x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(layer, 0, 0);
       x.setTransform(DPR, 0, 0, DPR, 0, 0);
-      x.fillStyle = '#060608'; x.fillRect(0, 0, W, H);
       const r = cv.getBoundingClientRect();
       const idle = pointer.x == null || now - pointer.t > 6000;
       const tx = idle ? W / 2 + Math.sin(now / 2600) * W * .18 : pointer.x - r.left;
       const ty = idle ? H * .62 : pointer.y - r.top;
+      rage += (rageTo - rage) * (rageTo ? .045 : .08);
       for (const t of tiles) {
         const ex = t.cx, ey = t.top + t.size / 2;
         const gx = Math.max(-1, Math.min(1, (tx - ex) / 520)), gy = Math.max(-1, Math.min(1, (ty - ey) / 380));
-        const k = reduce ? 1 : Math.min(1, .05 + (t.red ? .02 : .06));
+        const k = reduce ? 1 : t.red ? .02 : t.lag;
         t.lx += (gx - t.lx) * k; t.ly += (gy - t.ly) * k;
         let b = 0;
-        if (!t.red && !reduce) { const d = now - t.blinkAt; if (d > 0 && d < 160) b = 1 - Math.abs(d - 80) / 80; else if (d >= 160) t.blinkAt = now + 2500 + Math.random() * 9000; }
-        tile(x, t.cx, t.top, t.size, t.lx, t.ly, b, t.red, t.alpha);
+        if (!t.red && !reduce && rage < .5) { const d = now - t.blinkAt; if (d > 0 && d < 160) b = 1 - Math.abs(d - 80) / 80; else if (d >= 160) t.blinkAt = now + 2500 + Math.random() * 9000; }
+        // the red spreads from the front rows to the back
+        const mine = t.red ? 1 : Math.max(0, Math.min(1, (rage * 1.6 - t.wake * .6)));
+        eyes(x, t.cx, t.top, t.size, t.lx, t.ly, b, mine, t.alpha);
       }
       if (!reduce) raf = requestAnimationFrame(frame);
     }
@@ -129,8 +141,12 @@
     new IntersectionObserver(es => { vis = es[0].isIntersecting; if (vis) kick(); }).observe(cv);
     let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { build(); kick(); }, 120); });
     build(); kick();
-    return { kick };
+    return { kick, rage(on) { rageTo = on ? 1 : 0; kick(); } };
   })();
+  // hover the way in and the whole town notices
+  const sb = $('#spawnBtn');
+  sb.addEventListener('pointerenter', () => crowd.rage(true)); sb.addEventListener('pointerleave', () => crowd.rage(false));
+  sb.addEventListener('focus', () => crowd.rage(true)); sb.addEventListener('blur', () => crowd.rage(false));
 
   /* ---------------- small NPC faces (feed, leaderboard, your sheet) ---------------- */
   function face(cv, seed, opts = {}) {
@@ -146,22 +162,25 @@
     const u = c.toDataURL(); miniCache.set(tag, u); return u;
   }
 
-  /* ---------------- your NPC's big face follows the pointer ---------------- */
-  const meFace = (() => {
-    const cv = $('#me'); let seed = 7, red = false, lx = 0, ly = 0, blinkAt = performance.now() + 3000, raf = 0, vis = false;
+  /* ---------------- a face that follows the pointer (hero logo, your NPC) ---------------- */
+  function liveFace(cv, range) {
+    let seed = 7, red = false, lx = 0, ly = 0, blinkAt = performance.now() + 2000 + Math.random() * 2000, raf = 0, vis = false;
     function frame(now) {
       raf = 0; if (!vis) return;
       const r = cv.getBoundingClientRect();
-      const tx = pointer.x == null ? 0 : Math.max(-1, Math.min(1, (pointer.x - (r.left + r.width / 2)) / 400));
-      const ty = pointer.y == null ? .2 : Math.max(-1, Math.min(1, (pointer.y - (r.top + r.height / 2)) / 300));
+      const tx = pointer.x == null ? 0 : Math.max(-1, Math.min(1, (pointer.x - (r.left + r.width / 2)) / range));
+      const ty = pointer.y == null ? .25 : Math.max(-1, Math.min(1, (pointer.y - (r.top + r.height / 2)) / (range * .75)));
       lx += (tx - lx) * .12; ly += (ty - ly) * .12;
       let b = 0; const d = now - blinkAt; if (d > 0 && d < 170) b = 1 - Math.abs(d - 85) / 85; else if (d >= 170) blinkAt = now + 2200 + Math.random() * 5000;
       face(cv, seed, { lx, ly, blink: reduce ? 0 : b, red });
       if (!reduce) raf = requestAnimationFrame(frame);
     }
     new IntersectionObserver(es => { vis = es[0].isIntersecting; if (vis && !raf) raf = requestAnimationFrame(frame); }).observe(cv);
+    face(cv, seed, { lx: 0, ly: .25 });
     return { set(s, isRed) { seed = s; red = !!isRed; face(cv, seed, { lx, ly, red }); if (!raf && vis) raf = requestAnimationFrame(frame); } };
-  })();
+  }
+  liveFace($('#logo'), 520);
+  const meFace = liveFace($('#me'), 400);
 
   // the NPC speaks its one line, one character at a time
   let typing = 0;
@@ -179,6 +198,16 @@
     newborn: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6L13 3z"/>',
     hold: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
   };
+  const GO = {
+    trade: '<a class="go" href="https://pump.fun" target="_blank" rel="noopener">pump.fun ↗</a>',
+    host: '<a class="go" href="https://swap.pump.fun" target="_blank" rel="noopener">PumpSwap pools ↗</a>',
+    newborn: '<a class="go" href="https://pump.fun" target="_blank" rel="noopener">pump.fun, newly graduated ↗</a>',
+    hold: '<span>your wallet</span>',
+  };
+  function count(id) {
+    const b = S.st && S.st.stats && S.st.stats.byTask && S.st.stats.byTask[id];
+    return b ? `<span class="count"><b>${b.done}</b> done · <b>${b.open}</b> open</span>` : '';
+  }
   function taskState(t) {
     if (!t.live) return { cls: 'off', st: '<span class="st"><i></i>Opens when $NPC is live</span>', btn: '' };
     if (!W.acct) return { st: '<span class="st"><i></i>Open to every NPC</span>', btn: `<button class="btn pri" data-do="connect" type="button">Connect to accept</button>` };
@@ -206,8 +235,8 @@
         <div class="top"><div class="ico">${s.mark ? '<span class="mark">!</span>' : ''}<svg viewBox="0 0 24 24">${ICONS[t.id] || ''}</svg></div>
           <div><h3>${esc(t.name)}</h3><p class="line">${esc(t.line)}</p></div>
           <div class="pay"><b>${fsol(t.reward)}</b><small>SOL reward</small></div></div>
-        <dl><dt>proof</dt><dd>${esc(t.proof)}</dd><dt>window</dt><dd>${span(t.window)} after you accept</dd><dt>cooldown</dt><dd>${span(t.cooldown)} after it's done</dd></dl>
-        <div class="act">${s.btn}${s.st}</div>
+        <dl><dt>proof</dt><dd>${esc(t.proof)}</dd><dt>window</dt><dd>${span(t.window)} after you accept</dd><dt>cooldown</dt><dd>${span(t.cooldown)} after it's done</dd><dt>where</dt><dd>${GO[t.id] || '—'}</dd></dl>
+        <div class="act">${s.btn}${s.st}${count(t.id)}</div>
       </article>`;
     }).join('');
   }
@@ -219,12 +248,13 @@
     if (d === 'spawn') spawn();
     if (d === 'accept') accept(b.dataset.t);
     if (d === 'check') check(b.dataset.t);
+    if (d === 'card') idCard();
   });
 
   /* ---------------- your NPC sheet ---------------- */
   function renderMe() {
     const L = $('#meLedger'), spawnBtn = $('#spawnBtn');
-    $$('.who .btn').forEach(b => b.remove());
+    $$('.who .btn, .who .card-btn').forEach(b => b.remove());
     if (!W.acct) {
       $('#meTag').textContent = 'npc_????'; $('#meNo').textContent = 'not spawned'; meFace.set(7); say('connect a wallet, traveler.');
       L.innerHTML = `<div class="gate"><h3>Who are you in town?</h3><p>Connect a Solana wallet to see the NPC it becomes. Nothing is signed until you spawn.</p><button class="btn pri" data-do="connect" type="button">Connect wallet</button></div>`;
@@ -241,6 +271,7 @@
       return;
     }
     spawnBtn.textContent = 'Open your NPC';
+    $('.who').insertAdjacentHTML('beforeend', '<button class="card-btn" data-do="card" type="button">save ID card ↓</button>');
     const bal = me.npcBalance == null ? '—' : Math.floor(me.npcBalance).toLocaleString('en-US');
     const rows = me.history.map(h => {
       const t = taskOf(h.task);
@@ -254,6 +285,30 @@
         <div><small>tasks done</small><b>${me.done}</b></div>
       </div>
       <div class="hist"><h4>quest log · $NPC held: ${bal}</h4>${rows ? `<div class="tw"><table><thead><tr><th>task</th><th>reward</th><th>state</th><th>accepted</th><th>proof</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No tasks yet. Pick one from the board above.</p>`}</div>`;
+  }
+
+  // a 1200x630 card of your NPC, drawn in the browser from the same numbers you see
+  async function idCard() {
+    const me = S.me; if (!me || !me.spawned) return;
+    try { await Promise.all([document.fonts.load('700 60px M'), document.fonts.load('400 20px M'), document.fonts.load('800 30px I'), document.fonts.load('500 20px I')]); } catch (e) { }
+    const cv = document.createElement('canvas'); cv.width = 1200; cv.height = 630; const x = cv.getContext('2d');
+    x.fillStyle = '#060608'; x.fillRect(0, 0, 1200, 630);
+    // a faint crowd behind
+    for (let r = 0; r < 3; r++) for (let i = 0; i < 14; i++) { const sz = 60 + r * 22, cx = 40 + i * 92 + (r % 2) * 46, top = 360 + r * 70; x.globalAlpha = .22 + r * .1; tile(x, cx, top, sz, 0, -.4, 0, false, .25 + r * .12); }
+    x.globalAlpha = 1;
+    const g = x.createLinearGradient(0, 0, 0, 630); g.addColorStop(0, 'rgba(6,6,8,1)'); g.addColorStop(.45, 'rgba(6,6,8,.9)'); g.addColorStop(1, 'rgba(6,6,8,.55)'); x.fillStyle = g; x.fillRect(0, 0, 1200, 630);
+    tile(x, 250, 120, 300, .15, .1, 0, false, 1);
+    x.fillStyle = '#5f5d6b'; x.font = '400 20px M'; x.fillText(`NPC #${me.npc.no}`, 480, 160);
+    x.fillStyle = '#ecebf2'; x.font = '700 72px M'; x.fillText(me.npc.tag, 476, 236);
+    x.strokeStyle = '#292934'; x.lineWidth = 2; x.beginPath(); x.roundRect(480, 268, 640, 76, 14); x.stroke();
+    x.fillStyle = '#ecebf2'; x.font = '400 24px M'; x.fillText('“' + me.npc.line + '”', 506, 315);
+    const figs = [['earned', fsol(me.earned) + ' SOL'], ['paid', fsol(me.paid) + ' SOL'], ['tasks done', String(me.done)]];
+    figs.forEach(([k, v], i) => { const fx = 480 + i * 215; x.fillStyle = '#5f5d6b'; x.font = '400 18px M'; x.fillText(k, fx, 396); x.fillStyle = k === 'earned' ? '#ffc21a' : '#ecebf2'; x.font = '700 34px M'; x.fillText(v, fx, 438); });
+    x.fillStyle = '#9a98a6'; x.font = '500 20px I'; x.fillText('The NPC economy.', 80, 560);
+    x.textAlign = 'right'; x.fillStyle = '#5f5d6b'; x.font = '400 20px M'; x.fillText(location.host, 1120, 560);
+    const d = x.getImageData(0, 0, 1200, 630); for (let i = 0; i < d.data.length; i += 4) { const n = (Math.random() - .5) * 12; d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n; } x.putImageData(d, 0, 0);
+    const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = me.npc.tag + '.png'; document.body.appendChild(a); a.click(); a.remove();
+    toast('ID card saved');
   }
 
   /* ---------------- town: feed + leaderboard ---------------- */
@@ -296,7 +351,7 @@
 
   /* ---------------- data ---------------- */
   async function loadCfg() { try { S.cfg = await api('config'); renderCfg(); renderTasks(); renderMe(); } catch (e) { setTimeout(loadCfg, 4000); } }
-  async function loadState() { try { S.st = await api('state'); renderTown(); } catch (e) { $('#feedAge').textContent = 'retrying'; } }
+  async function loadState() { try { S.st = await api('state'); renderTown(); if (!S.busy) renderTasks(); } catch (e) { $('#feedAge').textContent = 'retrying'; } }
   async function loadMe() {
     if (!W.acct) { S.me = null; renderMe(); renderTasks(); return; }
     const w = W.acct.address;
