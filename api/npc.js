@@ -382,7 +382,8 @@ module.exports = async (req, res) => {
     if (path === 'config') return send(res, 200, publicConfig(), 'public, s-maxage=60');
     if (path === 'state') {
       const L = await ledger();
-      return send(res, 200, { ok: true, updated: L.updated, stats: L.stats, feed: L.feed, leaderboard: L.leaderboard }, 'public, s-maxage=10, stale-while-revalidate=60');
+      const town = Object.values(L.per).sort((a, b) => a.no - b.no).slice(0, 600).map(p => ({ tag: p.tag, no: p.no, done: p.done, wallet: p.wallet }));
+      return send(res, 200, { ok: true, updated: L.updated, stats: L.stats, feed: L.feed, leaderboard: L.leaderboard, town }, 'public, s-maxage=10, stale-while-revalidate=60');
     }
     if (path === 'npc') return send(res, 200, { ok: true, ...(await npcView(q.get('wallet'))) });
     if (path === 'owed') {
