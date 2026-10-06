@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/img/apple.png">
 <link rel="preload" href="/fonts/Inter-800.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/SpaceMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/css/npc.css?v=2">
+<link rel="stylesheet" href="/css/npc.css?v=3">
 </head>
 <body>
 <div class="grain" aria-hidden="true"></div>
@@ -45,6 +45,8 @@
   </div>
 </header>
 
+<div class="ticker" aria-label="latest from the board"><div class="tk" id="tk"></div></div>
+
 <main>
   <section class="sec" id="board">
     <div class="head"><span class="k">01</span><h2>The board</h2><p>Four jobs. Checked on-chain. Paid in SOL.</p></div>
@@ -52,7 +54,9 @@
   </section>
 
   <section class="sec" id="you">
-    <div class="head"><span class="k">02</span><h2>Your NPC</h2><p id="youSub">Every wallet gets one face, one tag and one line.</p></div>
+    <div class="head"><span class="k">02</span><h2>Your NPC</h2><p id="youSub">One face, one tag, one line per wallet.</p>
+      <form class="look" id="look" autocomplete="off"><input id="lookIn" spellcheck="false" placeholder="Look up any wallet" aria-label="wallet address"><button type="submit" aria-label="look up">↵</button></form></div>
+    <div class="viewing" id="viewing" hidden></div>
     <div class="sheet" id="sheet">
       <div class="who">
         <canvas id="me" width="320" height="320" aria-hidden="true"></canvas>
@@ -64,9 +68,10 @@
   </section>
 
   <section class="sec" id="town">
-    <div class="head"><span class="k">03</span><h2>Town</h2><p>Everything that happens here, read from the board.</p></div>
+    <div class="head"><span class="k">03</span><h2>Town</h2><p>Every NPC, every task, read from the board.</p></div>
+    <div class="panel pop"><div class="ph"><span>Population</span><span id="popN">—</span></div><div class="popw"><canvas id="pop" aria-hidden="true"></canvas><div class="ptip" id="ptip" hidden></div></div></div>
     <div class="split">
-      <div class="panel feed"><div class="ph"><span>Live feed</span><span class="pulse" id="feedAge">—</span></div><ol id="feed"></ol></div>
+      <div class="panel feed"><div class="ph"><span>Live feed</span><span class="tabs" id="ff"><button class="on" data-f="all" type="button">All</button><button data-f="spawn" type="button">Joined</button><button data-f="complete" type="button">Done</button><button data-f="paid" type="button">Paid</button></span></div><ol id="feed"></ol></div>
       <div class="panel ranks" id="ranks"><div class="ph"><span>Leaderboard</span><span>SOL earned</span></div><ol id="lb"></ol></div>
     </div>
   </section>
@@ -74,17 +79,17 @@
   <section class="sec" id="how">
     <div class="head"><span class="k">04</span><h2>How it works</h2><p>No database. The chain is the ledger.</p></div>
     <ol class="steps">
-      <li><b>Spawn</b><span>Sign one memo to the board. Your wallet becomes an NPC with a tag and a line.</span></li>
-      <li><b>Accept</b><span>Pick a task. Your accept is a memo on the board with the reward written in it.</span></li>
-      <li><b>Do the work</b><span>Trade, host a pool, catch a newborn coin or hold the line, from your own wallet.</span></li>
-      <li><b>Get paid</b><span>The site reads your wallet's transactions. Done tasks are paid in SOL from the treasury.</span></li>
+      <li><b>Spawn</b><span>Sign one memo to the board. Your wallet becomes an NPC.</span><code>npc:spawn</code></li>
+      <li><b>Accept</b><span>Pick a task. The reward is written into your memo.</span><code>npc:accept:trade:0.005</code></li>
+      <li><b>Do the work</b><span>Trade, host, catch a newborn or hold, from your own wallet.</span><code>your wallet's transactions</code></li>
+      <li><b>Get paid</b><span>The treasury pays SOL with a memo that points at your task.</span><code>npc:pay:&lt;task&gt;:&lt;wallet&gt;</code></li>
     </ol>
     <div class="flow" id="flow">
-      <div class="node"><small>source</small><b>$NPC creator fees</b></div>
+      <div class="node"><small>in</small><b id="flowIn">$NPC creator fees</b><em id="flowInSub">from every trade of $NPC</em></div>
       <div class="pipe"><i></i></div>
-      <div class="node hot"><small>treasury</small><b id="flowTre">not set yet</b></div>
+      <div class="node hot"><small>treasury</small><b id="flowTre">not set yet</b><em id="flowTreSub">—</em></div>
       <div class="pipe"><i></i></div>
-      <div class="node"><small>paid to</small><b>NPCs who did the work</b></div>
+      <div class="node"><small>out</small><b id="flowOut">0 SOL paid</b><em id="flowOutSub">to NPCs who did the work</em></div>
     </div>
     <div class="addr" id="addrs"></div>
   </section>
@@ -94,9 +99,11 @@
     <div class="qa">
       <details><summary>Is this real SOL?</summary><p>Yes. Rewards are sent from the treasury wallet, which is funded by $NPC creator fees. Every payout is an on-chain transfer with an <code>npc:pay</code> memo you can check on Solscan.</p></details>
       <details><summary>Does the site hold my keys or money?</summary><p>No. The server only builds transactions. Your wallet shows and signs each one. Spawning and accepting send 0 SOL; you pay only the network fee.</p></details>
-      <details><summary>How is a task checked?</summary><p>After you accept, the server reads your wallet's own transactions from Solana. A pump.fun or PumpSwap buy or sell completes Trader, a PumpSwap deposit completes Host, a buy within 30 minutes of a coin's graduation completes First responder, and your $NPC balance after 24 hours completes Hold the line.</p></details>
-      <details><summary>When do I get paid?</summary><p>A completed task is owed to you until the treasury sends the next payout batch. Your NPC shows every task as open, done, owed or paid, with links.</p></details>
-      <details><summary>Why can't I take a task?</summary><p>Each NPC can hold one of each task at a time, and a task cools down for 24 hours after you complete it. Hold the line opens when $NPC is live.</p></details>
+      <details><summary>How is a task checked?</summary><p>After you accept, the server reads your wallet's own transactions. A pump.fun or PumpSwap trade completes Trader, a PumpSwap deposit completes Host, a buy within 30 minutes of a graduation completes First responder, and your $NPC balance after 24 hours completes Hold the line.</p></details>
+      <details><summary>When do I get paid?</summary><p>A completed task is owed until the treasury sends the next payout batch. Your NPC shows every task as open, done, owed or paid.</p></details>
+      <details><summary>Why can't I take a task?</summary><p>One of each task at a time, and a 24 hour cooldown after you finish one. Hold the line opens when $NPC is live.</p></details>
+      <details><summary>What are ranks?</summary><p>A title from the number of tasks your NPC has finished on-chain. Ranks don't change rewards.</p></details>
+      <details><summary>Can I see someone else's NPC?</summary><p>Yes. Paste any wallet into the lookup above Your NPC. Everything is public on Solana anyway.</p></details>
       <details><summary>Is NPC part of pump.fun?</summary><p>No. NPC is independent. It reads public pump.fun and PumpSwap activity from Solana.</p></details>
     </div>
   </section>
@@ -110,6 +117,6 @@
 </div>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="/js/npc.js?v=2"></script>
+<script src="/js/npc.js?v=3"></script>
 </body>
 </html>
